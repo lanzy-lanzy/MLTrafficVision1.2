@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="bg-white shadow-lg rounded-lg p-6">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">Upload Traffic Video</h2>
+            
+            <!-- Upload Form -->
+            <form id="uploadForm" method="post" enctype="multipart/form-data" class="space-y-4">
+                {% csrf_token %}
+                <div class="space-y-2">
+                    <label for="video" class="block text-sm font-medium text-gray-700">
+                        Choose Video File
+                    </label>
+                    <input type="file" 
+                           id="video" 
+                           name="video" 
+                           accept="video/*"
+                           class="block w-full text-sm text-gray-500
+                                  file:mr-4 file:py-2 file:px-4
+                                  file:rounded-full file:border-0
+                                  file:text-sm file:font-semibold
+                                  file:bg-blue-50 file:text-blue-700
+                                  hover:file:bg-blue-100"
+                           required>
+                </div>
+
+                <button type="submit"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Upload Video
+                </button>
+            </form>
+
+            <!-- Status Message -->
+            <div id="statusMessage" class="mt-4 text-sm hidden"></div>
+
+            <!-- Video Container -->
+            <div id="videoContainer" class="mt-6 hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Video Feed -->
+                    <div class="lg:col-span-2">
+                        <div class="bg-black rounded-lg overflow-hidden">
+                            <img id="videoFeed" src="" class="w-full h-full object-contain">
+                        </div>
+                    </div>
+
+                    <!-- Stats Panel -->
+                    <div class="space-y-4">
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h3 class="text-lg font-semibold mb-4">Live Statistics</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-sm text-gray-600">Vehicles Detected</label>
+                                    <p id="vehicleCount" class="text-2xl font-bold text-gray-900">0</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-gray-600">Congestion Level</label>
+                                    <p id="congestionLevel" class="text-xl font-bold text-gray-900">LOW</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-gray-600">Vehicle Types</label>
+                                    <div id="vehicleTypes" class="mt-2 space-y-1"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let statsInterval;
+
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const statusMessage = document.getElementById('statusMessage');
+    const videoContainer = document.getElementById('videoContainer');
+    const videoFeed = document.getElementById('videoFeed');
+    
+    // Show status
+    statusMessage.textContent = 'Uploading video...';
+    statusMessage.className = 'mt-4 text-sm text-blue-600';
+    statusMessage.style.display = 'block';
+    
+    // Stop existing stats update if any
+    if (statsInterval) {
+        clearInterval(statsInterval);
+    }
+    
+    fetch('{% url "upload_video" %}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusMessage.textContent = 'Video uploaded successfully! Starting analysis...';
+            statusMessage.className = 'mt-4 text-sm text-green-600';
+            
+            // Show video container and start video feed
+            videoContainer.style.display = 'block';
+            videoFeed.src = '{% url "video_feed" %}?' + new Date().getTime();
+            
+            // Start updating stats
+            startStatsUpdate();
+        } else {
+            throw new Error(data.error || 'Upload failed');
+        }
+    })
+    .catch(error => {
+        statusMessage.textContent = error.message;
+        statusMessage.className = 'mt-4 text-sm text-red-600';
+        videoContainer.style.display = 'none';
+    });
+});
+
+function startStatsUpdate() {
+    // Clear existing interval if any
+    if (statsInterval) {
+        clearInterval(statsInterval);
+    }
+    
+    // Update stats every 500ms
+    statsInterval = setInterval(function() {
+        fetch('{% url "get_stats" %}')
+            .then(response => response.json())
+            .then(data => {
+                // Update vehicle count
+                document.getElementById('vehicleCount').textContent = data.vehicle_count;
+                
+                // Update congestion level
+                document.getElementById('congestionLevel').textContent = data.congestion_level;
+                
+                // Update vehicle types
+                const vehicleTypesHtml = Object.entries(data.vehicle_types)
+                    .map(([type, count]) => `
+                        <div class="flex justify-between">
+                            <span class="text-gray-700">${type}</span>
+                            <span class="font-medium">${count}</span>
+                        </div>
+                    `)
+                    .join('');
+                document.getElementById('vehicleTypes').innerHTML = vehicleTypesHtml;
+            })
+            .catch(console.error);
+    }, 500);
+}
+
+// Clean up when leaving the page
+window.addEventListener('beforeunload', function() {
+    if (statsInterval) {
+        clearInterval(statsInterval);
+    }
+    
+    // Try to stop the video
+    fetch('{% url "stop_video" %}', {
+        method: 'POST'
+    }).catch(() => {});
+});
+</script>
+{% endblock %}

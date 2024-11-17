@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Video Feed Column -->
+        <div class="lg:col-span-2">
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="relative">
+                    <img src="{% url 'video_feed' %}" alt="Video Feed" class="w-full">
+                    <div id="overlayStats" class="absolute top-0 left-0 bg-black bg-opacity-50 text-white p-2 text-sm">
+                        <!-- Stats will be updated dynamically -->
+                    </div>
+                </div>
+                <div class="p-4">
+                    <div class="flex space-x-4">
+                        <button onclick="startWebcam()" 
+                                class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+                            Start Webcam
+                        </button>
+                        <button onclick="stopVideo()" 
+                                class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
+                            Stop
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Column -->
+        <div class="space-y-6">
+            <!-- Current Stats -->
+            <div class="space-y-6">
+                <div class="bg-blue-50 p-4 sm:p-6 rounded-lg">
+                    <h3 class="text-base sm:text-lg font-semibold text-blue-700 mb-3 sm:mb-4">Current Statistics</h3>
+                    <div class="space-y-3 sm:space-y-4">
+                        <div>
+                            <label class="text-xs sm:text-sm text-gray-600">Vehicles Detected</label>
+                            <p class="text-2xl sm:text-3xl font-bold text-blue-800" id="vehicle-count">0</p>
+                        </div>
+                        <div>
+                            <label class="text-xs sm:text-sm text-gray-600">Congestion Level</label>
+                            <p class="text-xl sm:text-2xl font-bold text-yellow-800" id="congestion-level">Low</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 sm:p-6 rounded-lg">
+                    <h3 class="text-base sm:text-lg font-semibold text-gray-700 mb-3">Vehicle Types</h3>
+                    <div class="space-y-2" id="vehicle-types">
+                        <!-- Vehicle types will be updated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Insights Section -->
+            <div id="ai-insights" class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold mb-4">AI Traffic Insights</h3>
+                <div id="assessment" class="mb-4">
+                    <p class="text-gray-700"></p>
+                </div>
+                <div id="concerns" class="mb-4">
+                    <h4 class="font-medium mb-2">Potential Concerns:</h4>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <!-- Concerns will be updated dynamically -->
+                    </ul>
+                </div>
+                <div id="recommendations">
+                    <h4 class="font-medium mb-2">Recommendations:</h4>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <!-- Recommendations will be updated dynamically -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Function to update statistics
+    function updateStats() {
+        fetch('/get_stats/')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Update vehicle count
+                document.getElementById('vehicle-count').textContent = data.vehicle_count || 0;
+                
+                // Update congestion level
+                document.getElementById('congestion-level').textContent = data.congestion_level || 'Low';
+                
+                // Update vehicle types
+                const vehicleTypesDiv = document.getElementById('vehicle-types');
+                if (data.vehicle_types) {
+                    vehicleTypesDiv.innerHTML = Object.entries(data.vehicle_types)
+                        .map(([type, count]) => `
+                            <div class="flex justify-between items-center py-1">
+                                <span class="text-sm text-gray-700">${type}</span>
+                                <span class="text-sm font-semibold text-blue-600">${count}</span>
+                            </div>
+                        `)
+                        .join('');
+                }
+
+                // Update overlay stats
+                const overlayStats = document.getElementById('overlayStats');
+                overlayStats.innerHTML = `
+                    <div>Vehicles: ${data.vehicle_count || 0}</div>
+                    <div>Level: ${data.congestion_level || 'Low'}</div>
+                `;
+
+                // Update AI insights if available
+                if (data.ai_insights) {
+                    // Update assessment
+                    const assessmentDiv = document.querySelector('#assessment p');
+                    if (assessmentDiv && data.ai_insights.assessment) {
+                        assessmentDiv.textContent = data.ai_insights.assessment;
+                    }
+
+                    // Update concerns
+                    const concernsList = document.querySelector('#concerns ul');
+                    if (concernsList && data.ai_insights.concerns) {
+                        concernsList.innerHTML = data.ai_insights.concerns
+                            .map(concern => `<li class="text-red-600">${concern}</li>`)
+                            .join('');
+                    }
+
+                    // Update recommendations
+                    const recommendationsList = document.querySelector('#recommendations ul');
+                    if (recommendationsList && data.ai_insights.recommendations) {
+                        recommendationsList.innerHTML = data.ai_insights.recommendations
+                            .map(rec => `<li class="text-green-600">${rec}</li>`)
+                            .join('');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching stats:', error);
+            });
+    }
+    
+    // Update stats every 500ms
+    setInterval(updateStats, 500);
+
+    // Function to start webcam
+    function startWebcam() {
+        fetch('/start_webcam/')
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Failed to start webcam: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error starting webcam:', error);
+                alert('Failed to start webcam');
+            });
+    }
+    
+    // Function to stop video
+    function stopVideo() {
+        fetch('/stop_video/')
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Failed to stop video: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error stopping video:', error);
+                alert('Failed to stop video');
+            });
+    }
+</script>
+{% endblock %}

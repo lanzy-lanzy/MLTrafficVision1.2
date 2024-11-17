@@ -15,12 +15,16 @@ import tempfile
 import time
 from .gemini_insights import analyze_traffic_data, get_historical_analysis
 from django.views.decorators.http import require_http_methods
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models import Count, Avg
 
 # Global variables
 current_stats = {
     'vehicle_count': 0,
     'vehicle_types': {},
     'congestion_level': 'LOW',
+    'average_speed': 0
 }
 
 # Global video capture object and model
@@ -158,6 +162,19 @@ def get_current_stats(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+@require_http_methods(["GET"])
+def get_analytics_data(request):
+    """Endpoint to get real-time analytics data"""
+    # Get current stats from the global variable
+    data = {
+        'timestamp': timezone.now().isoformat(),
+        'vehicle_count': current_stats['vehicle_count'],
+        'vehicle_types': current_stats['vehicle_types'],
+        'congestion_level': current_stats['congestion_level'],
+        'average_speed': current_stats['average_speed']
+    }
+    return JsonResponse(data)
+
 def upload_video(request):
     """Handle video upload"""
     if request.method != 'POST':
@@ -190,7 +207,8 @@ def upload_video(request):
         current_stats = {
             'vehicle_count': 0,
             'vehicle_types': {},
-            'congestion_level': 'Low'
+            'congestion_level': 'Low',
+            'average_speed': 0
         }
         
         return JsonResponse({'success': True, 'message': 'Video uploaded successfully'})
@@ -246,3 +264,43 @@ class AnalyticsView(ListView):
     template_name = 'traffic_detection/analytics.html'
     context_object_name = 'traffic_data'
     ordering = ['-timestamp']
+    paginate_by = 50
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        
+        # Get data from the last hour for initial display
+        time_threshold = timezone.now() - timedelta(hours=1)
+        traffic_data = TrafficData.objects.filter(timestamp__gte=time_threshold).order_by('timestamp')
+        
+        # Prepare data for charts
+        traffic_data_list = []
+        for data in traffic_data:
+            traffic_data_list.append({
+                'timestamp': data.timestamp.isoformat(),
+                'vehicle_count': data.vehicle_count,
+                'vehicle_types': data.vehicle_types,
+                'congestion_level': data.congestion_level,
+                'average_speed': float(data.average_speed)
+            })
+        
+        # Add current stats to the list
+        traffic_data_list.append({
+            'timestamp': timezone.now().isoformat(),
+            'vehicle_count': current_stats['vehicle_count'],
+            'vehicle_types': current_stats['vehicle_types'],
+            'congestion_level': current_stats['congestion_level'],
+            'average_speed': float(current_stats['average_speed'])
+        })
+        
+        # Calculate aggregate statistics
+        context['total_vehicles'] = sum(data.vehicle_count for data in traffic_data)
+        context['avg_speed'] = traffic_data.aggregate(Avg('average_speed'))['average_speed__avg'] or 0
+        
+        # Get current congestion level
+        context['current_congestion'] = current_stats['congestion_level']
+        
+        # Add JSON data for charts
+        context['traffic_data_json'] = json.dumps(traffic_data_list)
+        
+        return context

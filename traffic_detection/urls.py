@@ -13,4 +13,5 @@ urlpatterns = [
     path('start_webcam/', views.start_webcam, name='start_webcam'),
     path('stop_video/', views.stop_video, name='stop_video'),
     path('analytics/', views.AnalyticsView.as_view(), name='analytics'),
+    path('get_analytics_data/', views.get_analytics_data, name='get_analytics_data'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -40,7 +40,7 @@
                         </div>
                         <div>
                             <label class="text-xs sm:text-sm text-gray-600">Congestion Level</label>
-                            <p class="text-xl sm:text-2xl font-bold text-yellow-800" id="congestion-level">Low</p>
+                            <p class="text-xl sm:text-2xl font-bold" id="congestion-level">Low</p>
                         </div>
                     </div>
                 </div>
@@ -54,20 +54,20 @@
             </div>
 
             <!-- AI Insights Section -->
-            <div id="ai-insights" class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                <h3 class="text-lg font-semibold mb-4">AI Traffic Insights</h3>
+            <div id="ai-insights" class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-indigo-900 mb-4">AI Traffic Insights</h3>
                 <div id="assessment" class="mb-4">
-                    <p class="text-gray-700"></p>
+                    <p class="text-gray-700 italic"></p>
                 </div>
                 <div id="concerns" class="mb-4">
-                    <h4 class="font-medium mb-2">Potential Concerns:</h4>
-                    <ul class="list-disc pl-5 space-y-1">
+                    <h4 class="font-medium text-red-800 mb-2">Potential Concerns:</h4>
+                    <ul class="list-disc pl-5 space-y-2">
                         <!-- Concerns will be updated dynamically -->
                     </ul>
                 </div>
                 <div id="recommendations">
-                    <h4 class="font-medium mb-2">Recommendations:</h4>
-                    <ul class="list-disc pl-5 space-y-1">
+                    <h4 class="font-medium text-green-800 mb-2">Recommendations:</h4>
+                    <ul class="list-disc pl-5 space-y-2">
                         <!-- Recommendations will be updated dynamically -->
                     </ul>
                 </div>
@@ -90,50 +90,70 @@
                 // Update vehicle count
                 document.getElementById('vehicle-count').textContent = data.vehicle_count || 0;
                 
-                // Update congestion level
-                document.getElementById('congestion-level').textContent = data.congestion_level || 'Low';
+                // Update congestion level with color coding
+                const congestionEl = document.getElementById('congestion-level');
+                const level = data.congestion_level || 'LOW';
+                congestionEl.textContent = level;
+                congestionEl.className = 'text-xl font-bold ' + 
+                    (level === 'HIGH' ? 'text-red-600' : 
+                     level === 'MEDIUM' ? 'text-yellow-600' : 
+                     'text-green-600');
                 
-                // Update vehicle types
+                // Update vehicle types with percentage
                 const vehicleTypesDiv = document.getElementById('vehicle-types');
                 if (data.vehicle_types) {
+                    const total = Object.values(data.vehicle_types).reduce((a, b) => a + b, 0);
                     vehicleTypesDiv.innerHTML = Object.entries(data.vehicle_types)
-                        .map(([type, count]) => `
-                            <div class="flex justify-between items-center py-1">
-                                <span class="text-sm text-gray-700">${type}</span>
-                                <span class="text-sm font-semibold text-blue-600">${count}</span>
-                            </div>
-                        `)
+                        .map(([type, count]) => {
+                            const percentage = total > 0 ? (count / total * 100).toFixed(1) : 0;
+                            return `
+                                <div class="flex justify-between items-center py-1">
+                                    <span class="text-sm text-gray-700">${type}</span>
+                                    <div class="text-right">
+                                        <span class="text-sm font-semibold text-blue-600">${count}</span>
+                                        <span class="text-xs text-gray-500 ml-1">(${percentage}%)</span>
+                                    </div>
+                                </div>
+                            `;
+                        })
                         .join('');
                 }
 
-                // Update overlay stats
-                const overlayStats = document.getElementById('overlayStats');
-                overlayStats.innerHTML = `
-                    <div>Vehicles: ${data.vehicle_count || 0}</div>
-                    <div>Level: ${data.congestion_level || 'Low'}</div>
-                `;
-
-                // Update AI insights if available
-                if (data.ai_insights) {
-                    // Update assessment
-                    const assessmentDiv = document.querySelector('#assessment p');
-                    if (assessmentDiv && data.ai_insights.assessment) {
-                        assessmentDiv.textContent = data.ai_insights.assessment;
+                // Update AI insights
+                if (data.ai_insights && data.ai_insights.insights) {
+                    const insights = data.ai_insights.insights;
+                    
+                    // Update assessment with fade effect
+                    const assessmentEl = document.querySelector('#assessment p');
+                    if (assessmentEl && insights.assessment) {
+                        assessmentEl.style.opacity = '0';
+                        setTimeout(() => {
+                            assessmentEl.textContent = insights.assessment;
+                            assessmentEl.style.opacity = '1';
+                        }, 200);
                     }
 
-                    // Update concerns
+                    // Update concerns with animation
                     const concernsList = document.querySelector('#concerns ul');
-                    if (concernsList && data.ai_insights.concerns) {
-                        concernsList.innerHTML = data.ai_insights.concerns
-                            .map(concern => `<li class="text-red-600">${concern}</li>`)
+                    if (concernsList && Array.isArray(insights.concerns)) {
+                        concernsList.innerHTML = insights.concerns
+                            .map(concern => `
+                                <li class="text-red-600 opacity-0 transform translate-y-2 animate-fade-in-up">
+                                    ${concern}
+                                </li>
+                            `)
                             .join('');
                     }
 
-                    // Update recommendations
+                    // Update recommendations with animation
                     const recommendationsList = document.querySelector('#recommendations ul');
-                    if (recommendationsList && data.ai_insights.recommendations) {
-                        recommendationsList.innerHTML = data.ai_insights.recommendations
-                            .map(rec => `<li class="text-green-600">${rec}</li>`)
+                    if (recommendationsList && Array.isArray(insights.recommendations)) {
+                        recommendationsList.innerHTML = insights.recommendations
+                            .map(rec => `
+                                <li class="text-green-600 opacity-0 transform translate-y-2 animate-fade-in-up">
+                                    ${rec}
+                                </li>
+                            `)
                             .join('');
                     }
                 }
@@ -142,6 +162,28 @@
                 console.error('Error fetching stats:', error);
             });
     }
+    
+    // Add CSS animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-fade-in-up {
+            animation: fadeInUp 0.5s ease forwards;
+        }
+        #assessment p {
+            transition: opacity 0.2s ease-in-out;
+        }
+    `;
+    document.head.appendChild(style);
     
     // Update stats every 500ms
     setInterval(updateStats, 500);

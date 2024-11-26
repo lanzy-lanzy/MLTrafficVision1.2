@@ -51,7 +51,8 @@
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-semibold text-gray-700">Recent Traffic Records</h3>
-            <div class="flex space-x-2">
+            <div class="flex items-center space-x-2">
+                <div id="updateStatus" class="text-sm text-gray-500"></div>
                 <button onclick="refreshRecords()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
                     Refresh Records
                 </button>
@@ -234,26 +235,29 @@
 
     async function fetchLatestData() {
         try {
-            const response = await fetch('/traffic/get_analytics_data/');
-            const newData = await response.json();
-
-            // Add new data point
-            trafficData.push(newData);
-
-            // Keep only last hour of data
-            const oneHourAgo = moment().subtract(1, 'hour');
-            trafficData = trafficData.filter(data => 
-                moment(data.timestamp).isAfter(oneHourAgo)
-            );
-
-            // Update charts
-            updateCharts();
-
-            // Update cards and table
-            updateOverviewCards();
-            updateRecentRecords();
+            const response = await fetch('/traffic/get_latest_data/');
+            const data = await response.json();
+            
+            if (data.success) {
+                trafficData = data.traffic_data;
+                
+                // Update all visualizations
+                updateCharts();
+                updateOverviewCards();
+                updateRecentRecords();
+                
+                // Update status indicator
+                const statusEl = document.getElementById('updateStatus');
+                statusEl.textContent = 'Last updated: ' + moment().format('HH:mm:ss');
+                statusEl.classList.remove('text-red-500');
+                statusEl.classList.add('text-green-500');
+            }
         } catch (error) {
-            console.error('Error fetching latest data:', error);
+            console.error('Error fetching data:', error);
+            const statusEl = document.getElementById('updateStatus');
+            statusEl.textContent = 'Update failed';
+            statusEl.classList.remove('text-green-500');
+            statusEl.classList.add('text-red-500');
         }
     }
 
@@ -311,53 +315,36 @@
 
     function updateRecentRecords() {
         const tbody = document.getElementById('trafficRecordsBody');
-        tbody.innerHTML = '';
-
-        trafficData.slice(-10).reverse().forEach(data => {
-            const row = document.createElement('tr');
-            row.classList.add('hover:bg-gray-50', 'transition-colors');
-            
-            // Determine congestion level color
-            const congestionColor = {
-                'LOW': 'bg-green-100 text-green-800',
-                'MEDIUM': 'bg-yellow-100 text-yellow-800',
-                'HIGH': 'bg-red-100 text-red-800'
-            }[data.congestion_level] || 'bg-gray-100 text-gray-800';
-
-            // Format vehicle types for better display
-            const vehicleTypesHtml = Object.entries(data.vehicle_types)
-                .map(([type, count]) => `
-                    <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
-                        ${type}: ${count}
-                    </span>
-                `).join('');
-
-            row.innerHTML = `
-                <td class="border px-4 py-3">
-                    <div class="text-sm text-gray-900">${moment(data.timestamp).format('YYYY-MM-DD')}</div>
-                    <div class="text-xs text-gray-500">${moment(data.timestamp).format('HH:mm:ss')}</div>
-                </td>
-                <td class="border px-4 py-3">
-                    <div class="text-sm font-medium text-gray-900">${data.vehicle_count}</div>
-                    <div class="text-xs text-gray-500">vehicles</div>
-                </td>
-                <td class="border px-4 py-3">
-                    <div class="flex flex-wrap gap-1">
-                        ${vehicleTypesHtml}
-                    </div>
-                </td>
-                <td class="border px-4 py-3">
-                    <span class="px-2 py-1 text-sm rounded-full ${congestionColor}">
-                        ${data.congestion_level}
+        const recentData = [...trafficData].reverse().slice(0, 10); // Get last 10 records
+        
+        tbody.innerHTML = recentData.map(record => `
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-4 py-2">${moment(record.timestamp).format('HH:mm:ss')}</td>
+                <td class="px-4 py-2">${record.vehicle_count}</td>
+                <td class="px-4 py-2">${formatVehicleTypes(record.vehicle_types)}</td>
+                <td class="px-4 py-2">
+                    <span class="px-2 py-1 rounded ${getCongestionClass(record.congestion_level)}">
+                        ${record.congestion_level}
                     </span>
                 </td>
-                <td class="border px-4 py-3">
-                    <div class="text-sm font-medium text-gray-900">${data.average_speed.toFixed(1)}</div>
-                    <div class="text-xs text-gray-500">km/h</div>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
+                <td class="px-4 py-2">${record.average_speed.toFixed(1)} km/h</td>
+            </tr>
+        `).join('');
+    }
+
+    function formatVehicleTypes(types) {
+        return Object.entries(types)
+            .map(([type, count]) => `${type}: ${count}`)
+            .join(', ');
+    }
+
+    function getCongestionClass(level) {
+        const classes = {
+            'Low': 'bg-green-100 text-green-800',
+            'Medium': 'bg-yellow-100 text-yellow-800',
+            'High': 'bg-red-100 text-red-800'
+        };
+        return classes[level] || 'bg-gray-100 text-gray-800';
     }
 
     function refreshRecords() {

@@ -24,124 +24,246 @@ current_stats = {
     'vehicle_count': 0,
     'vehicle_types': {},
     'congestion_level': 'LOW',
-    'average_speed': 0
+    'average_speed': 0,
+    'category_counts': {
+        'motorized': 0,
+        'non_motorized': 0,
+        'personal_mobility': 0,
+        'emergency': 0
+    }
 }
+
+# Define vehicle categories
+VEHICLE_CATEGORIES = {
+    'motorized': ['car', 'truck', 'bus', 'motorcycle'],
+    'non_motorized': ['bicycle'],
+    'personal_mobility': ['bicycle', 'motorcycle'],
+    'emergency': ['truck']  # Some emergency vehicles might be classified as trucks
+}
+
+# Performance optimization settings
+FRAME_SKIP = 1  # Process every frame for better accuracy
+MAX_DIMENSION = 800  # Increased resolution for better detection
+CONFIDENCE_THRESHOLD = 0.45  # Slightly lower threshold to catch more vehicles
+MIN_DETECTION_AREA = 1000  # Minimum area for vehicle detection
+IOU_THRESHOLD = 0.5  # Intersection over Union threshold for NMS
 
 # Global video capture object and model
 video_capture = None
-model = YOLO('yolov5s.pt')
+model = YOLO('yolov8n.pt')
+model.conf = CONFIDENCE_THRESHOLD
+model.iou = IOU_THRESHOLD
+if torch.cuda.is_available():
+    model.to('cuda')  # Use GPU if available
 last_detection_time = 0
 DETECTION_INTERVAL = 0.1  # Run detection every 100ms
+
+def optimize_frame_size(frame):
+    """Optimize frame size while maintaining aspect ratio"""
+    height, width = frame.shape[:2]
+    if max(height, width) > MAX_DIMENSION:
+        scale = MAX_DIMENSION / max(height, width)
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        return cv2.resize(frame, (new_width, new_height))
+    return frame
 
 def process_frame(frame):
     global current_stats, last_detection_time
     
     if frame is None:
         return None
-    
+        
     current_time = time.time()
-    should_detect = current_time - last_detection_time >= DETECTION_INTERVAL
     
-    # Only run detection at intervals
-    if should_detect:
-        # Resize frame for faster processing
-        frame_resized = cv2.resize(frame, (640, 640))
+    try:
+        # Optimize frame size while maintaining aspect ratio
+        original_height, original_width = frame.shape[:2]
+        frame_processed = optimize_frame_size(frame.copy())
+        processed_height, processed_width = frame_processed.shape[:2]
         
-        # Run YOLOv5 detection
-        results = model(frame_resized)
+        # Calculate scale factors for coordinate conversion
+        scale_x = original_width / processed_width
+        scale_y = original_height / processed_height
         
-        # Reset frame-specific counters
+        # Run detection with augmented inference
+        results = model(frame_processed, verbose=False, augment=True)  # Enable test time augmentation
+        result = results[0]
+        
+        # Reset counters
         frame_vehicles = 0
         frame_vehicle_types = {}
+        frame_category_counts = {cat: 0 for cat in VEHICLE_CATEGORIES.keys()}
         
-        # Calculate scale factors
-        h, w = frame.shape[:2]
-        scale_x = w / 640
-        scale_y = h / 640
-        
-        # Draw detection boxes
-        for detection in results[0].boxes.data:
-            x1, y1, x2, y2, conf, cls = detection
+        # Process detections
+        if len(result.boxes) > 0:
+            # Get all detections at once
+            boxes = result.boxes
+            confidences = boxes.conf.cpu().numpy()
+            classes = boxes.cls.cpu().numpy()
+            coordinates = boxes.xyxy.cpu().numpy()
             
-            # Scale coordinates back to original size
-            x1 = int(float(x1) * scale_x)
-            y1 = int(float(y1) * scale_y)
-            x2 = int(float(x2) * scale_x)
-            y2 = int(float(y2) * scale_y)
+            # Filter detections
+            valid_detections = []
             
-            class_id = int(cls)
-            vehicle_type = model.names[class_id]
-            confidence = float(conf)
-            
-            # Only count vehicles with high confidence
-            if vehicle_type in ['car', 'truck', 'bus', 'motorcycle'] and confidence > 0.5:
-                frame_vehicles += 1
-                frame_vehicle_types[vehicle_type] = frame_vehicle_types.get(vehicle_type, 0) + 1
+            for box, class_id, conf in zip(coordinates, classes, confidences):
+                vehicle_type = model.names[int(class_id)]
                 
-                # Draw rectangle and label
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                if confidence > 0.7:  # Only show labels for high confidence detections
-                    label = f"{vehicle_type}: {confidence:.2f}"
-                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                # Calculate detection area
+                x1, y1, x2, y2 = map(int, box)
+                area = (x2 - x1) * (y2 - y1)
+                
+                # Apply size and confidence filters
+                if (vehicle_type in sum(VEHICLE_CATEGORIES.values(), []) and 
+                    conf > CONFIDENCE_THRESHOLD and 
+                    area > MIN_DETECTION_AREA):
+                    
+                    # Scale coordinates back to original frame size
+                    x1 = int(x1 * scale_x)
+                    y1 = int(y1 * scale_y)
+                    x2 = int(x2 * scale_x)
+                    y2 = int(y2 * scale_y)
+                    
+                    valid_detections.append({
+                        'box': (x1, y1, x2, y2),
+                        'type': vehicle_type,
+                        'conf': conf,
+                        'area': area
+                    })
+                    
+                    # Update counters
+                    frame_vehicles += 1
+                    frame_vehicle_types[vehicle_type] = frame_vehicle_types.get(vehicle_type, 0) + 1
+                    
+                    # Update category counts
+                    for category, types in VEHICLE_CATEGORIES.items():
+                        if vehicle_type in types:
+                            frame_category_counts[category] += 1
+                    
+                    # Draw detection box and label
+                    color = get_vehicle_color(vehicle_type)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                    
+                    # Add detection label with confidence and area
+                    label = f"{vehicle_type}: {conf:.2f}"
+                    label_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                    y1 = max(y1, label_size[1])
+                    
+                    # Draw label background
+                    cv2.rectangle(frame, 
+                                (x1, y1 - label_size[1] - baseline),
+                                (x1 + label_size[0], y1),
+                                color, 
+                                cv2.FILLED)
+                    
+                    # Draw label text
+                    cv2.putText(frame, label, (x1, y1 - baseline),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
-        # Update global statistics
-        current_stats['vehicle_count'] = frame_vehicles
-        current_stats['vehicle_types'] = frame_vehicle_types
+        # Update global stats with smoothing
+        alpha = 0.7  # Smoothing factor
+        for key in current_stats['category_counts'].keys():
+            current_stats['category_counts'][key] = int(
+                alpha * current_stats['category_counts'][key] + 
+                (1 - alpha) * frame_category_counts[key]
+            )
         
-        # Update congestion level
-        if frame_vehicles < 3:
-            current_stats['congestion_level'] = 'LOW'
-        elif frame_vehicles < 6:
-            current_stats['congestion_level'] = 'MEDIUM'
-        else:
-            current_stats['congestion_level'] = 'HIGH'
-            
+        current_stats.update({
+            'vehicle_count': frame_vehicles,
+            'vehicle_types': frame_vehicle_types,
+            'congestion_level': get_congestion_level(frame_category_counts)
+        })
+        
         last_detection_time = current_time
+        
+    except Exception as e:
+        print(f"Error processing frame: {e}")
     
-    # Always draw statistics overlay
+    # Draw overlay with enhanced visibility
+    draw_overlay(frame)
+    return frame
+
+def draw_overlay(frame):
+    """Draw statistics overlay with enhanced visibility"""
+    # Create semi-transparent overlay background
+    overlay = frame.copy()
+    overlay_height = 150
+    cv2.rectangle(overlay, (0, 0), (300, overlay_height), (0, 0, 0), cv2.FILLED)
+    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+    
     stats_text = [
-        f"Vehicles: {current_stats['vehicle_count']}",
-        f"Congestion: {current_stats['congestion_level']}"
+        f"Total Vehicles: {current_stats['vehicle_count']}",
+        f"Congestion: {current_stats['congestion_level']}",
+        f"Motorized: {current_stats['category_counts']['motorized']}",
+        f"Non-motorized: {current_stats['category_counts']['non_motorized']}"
     ]
     
-    # Add vehicle type counts
+    # Add vehicle type breakdown
     for v_type, count in current_stats['vehicle_types'].items():
-        stats_text.append(f"{v_type}: {count}")
+        stats_text.append(f"{v_type.capitalize()}: {count}")
     
-    # Draw statistics on frame
-    y_position = 30
-    for text in stats_text:
-        cv2.putText(frame, text, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 
-                   0.6, (255, 255, 255), 2)
-        y_position += 25
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.6
+    thickness = 2
+    padding = 25
     
-    return frame
+    for i, text in enumerate(stats_text):
+        y_position = 30 + (i * padding)
+        # Draw shadow for better visibility
+        cv2.putText(frame, text, (11, y_position + 1), font, font_scale, (0, 0, 0), thickness)
+        cv2.putText(frame, text, (10, y_position), font, font_scale, (255, 255, 255), thickness)
+
+def get_vehicle_color(vehicle_type):
+    """Get color for vehicle type"""
+    if vehicle_type in VEHICLE_CATEGORIES['emergency']:
+        return (0, 0, 255)  # Red
+    elif vehicle_type in VEHICLE_CATEGORIES['non_motorized']:
+        return (255, 165, 0)  # Orange
+    elif vehicle_type in VEHICLE_CATEGORIES['personal_mobility']:
+        return (255, 0, 255)  # Purple
+    return (0, 255, 0)  # Green
+
+def get_congestion_level(category_counts):
+    """Determine congestion level"""
+    total_traffic = category_counts['motorized'] + category_counts['non_motorized']
+    if total_traffic < 4:
+        return 'LOW'
+    elif total_traffic < 8:
+        return 'MEDIUM'
+    return 'HIGH'
 
 def get_video_stream():
     global video_capture
+    frame_count = 0
     
     while True:
         if video_capture is None or not video_capture.isOpened():
-            # If no video is loaded, show a blank frame
             frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(frame, "No video loaded", (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 
-                       1, (255, 255, 255), 2)
+            cv2.putText(frame, "No video loaded", (200, 240), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         else:
             ret, frame = video_capture.read()
             if not ret:
-                # Reset video to beginning if it ends
                 video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
             
-            # Process frame with detection
-            frame = process_frame(frame)
+            # Process only every nth frame
+            frame_count += 1
+            if frame_count % FRAME_SKIP == 0:
+                frame = process_frame(frame)
+            else:
+                # Just draw overlay for skipped frames
+                draw_overlay(frame)
         
-        # Convert frame to JPEG with lower quality for faster streaming
-        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        frame_bytes = buffer.tobytes()
+        # Optimize JPEG encoding
+        ret, buffer = cv2.imencode('.jpg', frame, [
+            cv2.IMWRITE_JPEG_QUALITY, 85,
+            cv2.IMWRITE_JPEG_OPTIMIZE, 1
+        ])
         
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        if ret:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 @gzip_page
 def video_feed(request):
@@ -171,7 +293,8 @@ def get_analytics_data(request):
         'vehicle_count': current_stats['vehicle_count'],
         'vehicle_types': current_stats['vehicle_types'],
         'congestion_level': current_stats['congestion_level'],
-        'average_speed': current_stats['average_speed']
+        'average_speed': current_stats['average_speed'],
+        'category_counts': current_stats['category_counts']
     }
     return JsonResponse(data)
 
@@ -208,7 +331,13 @@ def upload_video(request):
             'vehicle_count': 0,
             'vehicle_types': {},
             'congestion_level': 'Low',
-            'average_speed': 0
+            'average_speed': 0,
+            'category_counts': {
+                'motorized': 0,
+                'non_motorized': 0,
+                'personal_mobility': 0,
+                'emergency': 0
+            }
         }
         
         return JsonResponse({'success': True, 'message': 'Video uploaded successfully'})

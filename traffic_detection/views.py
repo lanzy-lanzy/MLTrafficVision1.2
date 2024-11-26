@@ -25,6 +25,7 @@ current_stats = {
     'vehicle_types': {},
     'congestion_level': 'LOW',
     'average_speed': 0,
+    'speeds': [],  # List to store recent speed measurements
     'category_counts': {
         'motorized': 0,
         'non_motorized': 0,
@@ -140,25 +141,48 @@ def process_frame(frame):
                         if vehicle_type in types:
                             frame_category_counts[category] += 1
                     
-                    # Draw detection box and label
+                    # Calculate center point of detection
+                    center_x = (x1 + x2) // 2
+                    center_y = (y1 + y2) // 2
+                    
+                    # Calculate and update speed if we have previous detections
+                    if hasattr(process_frame, 'prev_centers'):
+                        for prev_center in process_frame.prev_centers:
+                            dist = ((center_x - prev_center[0])**2 + (center_y - prev_center[1])**2)**0.5
+                            if dist < 100:  # If it's likely the same vehicle
+                                speed = calculate_speed(prev_center, (center_x, center_y), time.time() - last_detection_time)
+                                current_stats['speeds'].append(speed)
+                                # Keep only recent speed measurements
+                                current_stats['speeds'] = current_stats['speeds'][-20:]
+                    
+                    # Store current centers for next frame
+                    if not hasattr(process_frame, 'prev_centers'):
+                        process_frame.prev_centers = []
+                    process_frame.prev_centers = [(center_x, center_y)]
+                    
+                    # Calculate average speed
+                    if current_stats['speeds']:
+                        current_stats['average_speed'] = sum(current_stats['speeds']) / len(current_stats['speeds'])
+                    
+                    # Draw detection box and label with speed
                     color = get_vehicle_color(vehicle_type)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                     
-                    # Add detection label with confidence and area
-                    label = f"{vehicle_type}: {conf:.2f}"
-                    label_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                    # Add detection label with speed in yellow
+                    speed_text = f"{get_vehicle_icon(vehicle_type)} {vehicle_type}: {current_stats['average_speed']:.1f} km/h"
+                    label_size, baseline = cv2.getTextSize(speed_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
                     y1 = max(y1, label_size[1])
                     
                     # Draw label background
                     cv2.rectangle(frame, 
                                 (x1, y1 - label_size[1] - baseline),
                                 (x1 + label_size[0], y1),
-                                color, 
+                                (0, 0, 0),  # Black background
                                 cv2.FILLED)
                     
-                    # Draw label text
-                    cv2.putText(frame, label, (x1, y1 - baseline),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                    # Draw label text in yellow
+                    cv2.putText(frame, speed_text, (x1, y1 - baseline),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)  # Yellow color
         
         # Update global stats with smoothing
         alpha = 0.7  # Smoothing factor
@@ -192,10 +216,11 @@ def draw_overlay(frame):
     cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
     
     stats_text = [
-        f"Total Vehicles: {current_stats['vehicle_count']}",
-        f"Congestion: {current_stats['congestion_level']}",
-        f"Motorized: {current_stats['category_counts']['motorized']}",
-        f"Non-motorized: {current_stats['category_counts']['non_motorized']}"
+        f"[TOTAL] Total Vehicles: {current_stats['vehicle_count']}",
+        f"[SPEED] Avg Speed: {current_stats['average_speed']:.1f} km/h",
+        f"[STATUS] Congestion: {current_stats['congestion_level']}",
+        f"[AUTO] Motorized: {current_stats['category_counts']['motorized']}",
+        f"[BIKE] Non-motorized: {current_stats['category_counts']['non_motorized']}"
     ]
     
     # Add vehicle type breakdown
@@ -223,6 +248,17 @@ def get_vehicle_color(vehicle_type):
         return (255, 0, 255)  # Purple
     return (0, 255, 0)  # Green
 
+def get_vehicle_icon(vehicle_type):
+    """Return a text-based icon for the vehicle type"""
+    icons = {
+        'car': '[CAR]',
+        'truck': '[TRUCK]',
+        'bus': '[BUS]',
+        'motorcycle': '[MOTO]',
+        'bicycle': '[BIKE]'
+    }
+    return icons.get(vehicle_type.lower(), '[VEH]')  # Default to [VEH] if type not found
+
 def get_congestion_level(category_counts):
     """Determine congestion level"""
     total_traffic = category_counts['motorized'] + category_counts['non_motorized']
@@ -231,6 +267,16 @@ def get_congestion_level(category_counts):
     elif total_traffic < 8:
         return 'MEDIUM'
     return 'HIGH'
+
+def calculate_speed(prev_pos, curr_pos, time_diff):
+    """Calculate speed in km/h given two positions and time difference"""
+    if time_diff == 0:
+        return 0
+    # Convert pixel distance to meters (assuming average lane width is 3.5 meters)
+    pixel_distance = ((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)**0.5
+    meters = pixel_distance * (3.5 / 100)  # Approximate conversion
+    speed = (meters / time_diff) * 3.6  # Convert m/s to km/h
+    return min(speed, 120)  # Cap at 120 km/h to filter outliers
 
 def get_video_stream():
     global video_capture
@@ -332,6 +378,7 @@ def upload_video(request):
             'vehicle_types': {},
             'congestion_level': 'Low',
             'average_speed': 0,
+            'speeds': [],  # List to store recent speed measurements
             'category_counts': {
                 'motorized': 0,
                 'non_motorized': 0,

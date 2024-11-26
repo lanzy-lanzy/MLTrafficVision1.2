@@ -8,7 +8,7 @@
             <div class="bg-white rounded-lg shadow-md overflow-hidden">
                 <div class="relative">
                     <img src="{% url 'video_feed' %}" alt="Video Feed" class="w-full">
-                    <div id="overlayStats" class="absolute top-0 left-0 bg-black bg-opacity-50 text-white p-2 text-sm">
+                    <div id="overlayStats" class="absolute top-0 left-0 bg-black bg-opacity-50 text-white p-2 text-sm rounded">
                         <!-- Stats will be updated dynamically -->
                     </div>
                 </div>
@@ -16,11 +16,11 @@
                     <div class="flex space-x-4">
                         <button onclick="startWebcam()" 
                                 class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
-                            Start Webcam
+                            <i class='bx bx-video'></i> Start Webcam
                         </button>
                         <button onclick="stopVideo()" 
                                 class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
-                            Stop
+                            <i class='bx bx-video-off'></i> Stop
                         </button>
                     </div>
                 </div>
@@ -32,21 +32,35 @@
             <!-- Current Stats -->
             <div class="space-y-6">
                 <div class="bg-blue-50 p-4 sm:p-6 rounded-lg">
-                    <h3 class="text-base sm:text-lg font-semibold text-blue-700 mb-3 sm:mb-4">Current Statistics</h3>
+                    <h3 class="text-base sm:text-lg font-semibold text-blue-700 mb-3 sm:mb-4">
+                        <i class='bx bxs-dashboard'></i> Current Statistics
+                    </h3>
                     <div class="space-y-3 sm:space-y-4">
                         <div>
-                            <label class="text-xs sm:text-sm text-gray-600">Vehicles Detected</label>
+                            <label class="text-xs sm:text-sm text-gray-600">
+                                <i class='bx bxs-car text-blue-600'></i> Vehicles Detected
+                            </label>
                             <p class="text-2xl sm:text-3xl font-bold text-blue-800" id="vehicle-count">0</p>
                         </div>
                         <div>
-                            <label class="text-xs sm:text-sm text-gray-600">Congestion Level</label>
+                            <label class="text-xs sm:text-sm text-gray-600">
+                                <i class='bx bxs-dashboard text-yellow-500'></i> Average Speed
+                            </label>
+                            <p class="text-2xl sm:text-3xl font-bold text-yellow-500" id="average-speed">0 km/h</p>
+                        </div>
+                        <div>
+                            <label class="text-xs sm:text-sm text-gray-600">
+                                <i class='bx bxs-traffic text-red-500'></i> Congestion Level
+                            </label>
                             <p class="text-xl sm:text-2xl font-bold" id="congestion-level">Low</p>
                         </div>
                     </div>
                 </div>
                 
                 <div class="bg-gray-50 p-4 sm:p-6 rounded-lg">
-                    <h3 class="text-base sm:text-lg font-semibold text-gray-700 mb-3">Vehicle Types</h3>
+                    <h3 class="text-base sm:text-lg font-semibold text-gray-700 mb-3">
+                        <i class='bx bxs-car-garage'></i> Vehicle Types
+                    </h3>
                     <div class="space-y-2" id="vehicle-types">
                         <!-- Vehicle types will be updated dynamically -->
                     </div>
@@ -56,22 +70,30 @@
             <!-- AI Insights Section -->
             <div id="ai-insights" class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg shadow-md">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-semibold text-indigo-900">AI Traffic Insights</h3>
+                    <h3 class="text-lg font-semibold text-indigo-900">
+                        <i class='bx bx-brain'></i> AI Traffic Insights
+                    </h3>
                     <span id="insights-timestamp" class="text-sm text-gray-500"></span>
                 </div>
                 
                 <div id="traffic-pattern" class="mb-4 bg-white bg-opacity-50 p-3 rounded-lg">
-                    <h4 class="font-medium text-indigo-800 mb-2">Current Traffic Pattern:</h4>
+                    <h4 class="font-medium text-indigo-800 mb-2">
+                        <i class='bx bx-line-chart'></i> Current Traffic Pattern:
+                    </h4>
                     <p class="text-gray-700 italic"></p>
                 </div>
 
                 <div id="assessment" class="mb-4 bg-white bg-opacity-50 p-3 rounded-lg">
-                    <h4 class="font-medium text-indigo-800 mb-2">Traffic Assessment:</h4>
+                    <h4 class="font-medium text-indigo-800 mb-2">
+                        <i class='bx bx-analyse'></i> Traffic Assessment:
+                    </h4>
                     <p class="text-gray-700 italic"></p>
                 </div>
 
                 <div id="concerns" class="mb-4">
-                    <h4 class="font-medium text-red-800 mb-2">Potential Concerns:</h4>
+                    <h4 class="font-medium text-red-800 mb-2">
+                        <i class='bx bx-error-circle'></i> Potential Concerns:
+                    </h4>
                     <div class="space-y-2 max-h-48 overflow-y-auto">
                         <ul class="list-none space-y-2">
                             <!-- Concerns will be updated dynamically -->
@@ -80,7 +102,9 @@
                 </div>
 
                 <div id="recommendations">
-                    <h4 class="font-medium text-green-800 mb-2">Recommendations:</h4>
+                    <h4 class="font-medium text-green-800 mb-2">
+                        <i class='bx bx-bulb'></i> Recommendations:
+                    </h4>
                     <div class="space-y-2 max-h-48 overflow-y-auto">
                         <ul class="list-none space-y-2">
                             <!-- Recommendations will be updated dynamically -->
@@ -93,7 +117,6 @@
 </div>
 
 <script>
-    // Function to update statistics
     function updateStats() {
         fetch('/get_stats/')
             .then(response => {
@@ -106,25 +129,33 @@
                 // Update vehicle count
                 document.getElementById('vehicle-count').textContent = data.vehicle_count || 0;
                 
-                // Update congestion level with color coding
-                const congestionEl = document.getElementById('congestion-level');
-                const level = data.congestion_level || 'LOW';
-                congestionEl.textContent = level;
-                congestionEl.className = 'text-xl font-bold ' + 
-                    (level === 'HIGH' ? 'text-red-600' : 
-                     level === 'MEDIUM' ? 'text-yellow-600' : 
-                     'text-green-600');
+                // Update average speed
+                const avgSpeed = data.average_speed || 0;
+                document.getElementById('average-speed').textContent = `${avgSpeed.toFixed(1)} km/h`;
                 
-                // Update vehicle types with percentage
+                // Update overlay stats
+                const overlayStats = document.getElementById('overlayStats');
+                overlayStats.innerHTML = `
+                    <div class="font-semibold">
+                        <i class='bx bxs-car'></i> Vehicles: ${data.vehicle_count || 0}<br>
+                        <i class='bx bxs-dashboard text-yellow-300'></i> Avg Speed: ${avgSpeed.toFixed(1)} km/h<br>
+                        <i class='bx bxs-traffic'></i> Status: ${data.congestion_level || 'LOW'}
+                    </div>
+                `;
+                
+                // Update vehicle types with icons
                 const vehicleTypesDiv = document.getElementById('vehicle-types');
                 if (data.vehicle_types) {
                     const total = Object.values(data.vehicle_types).reduce((a, b) => a + b, 0);
                     vehicleTypesDiv.innerHTML = Object.entries(data.vehicle_types)
                         .map(([type, count]) => {
                             const percentage = total > 0 ? (count / total * 100).toFixed(1) : 0;
+                            const icon = getVehicleIcon(type);
                             return `
                                 <div class="flex justify-between items-center py-1">
-                                    <span class="text-sm text-gray-700">${type}</span>
+                                    <span class="text-sm text-gray-700">
+                                        <i class='${icon}'></i> ${type}
+                                    </span>
                                     <div class="text-right">
                                         <span class="text-sm font-semibold text-blue-600">${count}</span>
                                         <span class="text-xs text-gray-500 ml-1">(${percentage}%)</span>
@@ -135,7 +166,7 @@
                         .join('');
                 }
 
-                // Update AI insights with animation
+                // Update AI insights with icons
                 if (data.ai_insights && data.ai_insights.insights) {
                     const insights = data.ai_insights.insights;
                     
@@ -151,13 +182,14 @@
                         updateWithFade(assessmentEl, insights.assessment);
                     }
 
-                    // Update concerns with animation
+                    // Update concerns with icons
                     const concernsList = document.querySelector('#concerns ul');
                     if (concernsList && Array.isArray(insights.concerns)) {
                         concernsList.innerHTML = insights.concerns
                             .map(concern => `
-                                <li class="bg-red-50 p-3 rounded-lg shadow-sm border border-red-100 transform transition-all duration-300 hover:scale-102">
+                                <li class="bg-red-50 p-3 rounded-lg shadow-sm border border-red-100">
                                     <div class="flex items-start space-x-2">
+                                        <i class='bx bx-error-circle text-red-500'></i>
                                         <span class="flex-1">${concern}</span>
                                     </div>
                                 </li>
@@ -165,13 +197,14 @@
                             .join('');
                     }
 
-                    // Update recommendations with animation
+                    // Update recommendations with icons
                     const recommendationsList = document.querySelector('#recommendations ul');
                     if (recommendationsList && Array.isArray(insights.recommendations)) {
                         recommendationsList.innerHTML = insights.recommendations
                             .map(rec => `
-                                <li class="bg-green-50 p-3 rounded-lg shadow-sm border border-green-100 transform transition-all duration-300 hover:scale-102">
+                                <li class="bg-green-50 p-3 rounded-lg shadow-sm border border-green-100">
                                     <div class="flex items-start space-x-2">
+                                        <i class='bx bx-check-circle text-green-500'></i>
                                         <span class="flex-1">${rec}</span>
                                     </div>
                                 </li>
@@ -189,6 +222,17 @@
             });
     }
 
+    function getVehicleIcon(type) {
+        const icons = {
+            'car': 'bx bxs-car',
+            'truck': 'bx bxs-truck',
+            'bus': 'bx bxs-bus',
+            'motorcycle': 'bx bxs-motorcycle',
+            'bicycle': 'bx bxs-cycling'
+        };
+        return icons[type.toLowerCase()] || 'bx bxs-car';
+    }
+
     function updateWithFade(element, newText) {
         element.style.opacity = '0';
         setTimeout(() => {
@@ -199,38 +243,8 @@
 
     // Initial update
     updateStats();
-
-    // Update every 10 seconds
-    setInterval(updateStats, 10000);
-
-    // Function to start webcam
-    function startWebcam() {
-        fetch('/start_webcam/')
-            .then(response => response.json())
-            .then(data => {
-                if (!data.success) {
-                    alert('Failed to start webcam: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error starting webcam:', error);
-                alert('Failed to start webcam');
-            });
-    }
     
-    // Function to stop video
-    function stopVideo() {
-        fetch('/stop_video/')
-            .then(response => response.json())
-            .then(data => {
-                if (!data.success) {
-                    alert('Failed to stop video: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error stopping video:', error);
-                alert('Failed to stop video');
-            });
-    }
+    // Update every 1 second
+    setInterval(updateStats, 1000);
 </script>
 {% endblock %}
